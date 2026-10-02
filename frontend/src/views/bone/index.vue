@@ -24,6 +24,40 @@
       </span>
     </p>
 
+    <section class="return-panel">
+      <h3 class="return-title">退样办理</h3>
+      <p class="return-desc">
+        只有「已鉴定」的标本可以办理退样；退样后鉴定结论清空、状态回到「待鉴定」，批复会落入测年送检清单，同一标本只生效一次。
+      </p>
+      <table v-if="returnable.length" class="data-table">
+        <thead>
+          <tr>
+            <th>标本编号</th>
+            <th>出土单位</th>
+            <th>种属</th>
+            <th>年龄估计</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in returnable" :key="String(row.id)">
+            <td>{{ row['标本编号'] ?? '—' }}</td>
+            <td>{{ row['出土单位'] ?? '—' }}</td>
+            <td>{{ row['种属'] ?? '—' }}</td>
+            <td>{{ row['年龄估计'] ?? '—' }}</td>
+            <td class="row-actions">
+              <button class="link" type="button" @click="submitReturn(Number(row.id))">办理退样</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-else class="empty-state">当前没有可退样的标本：清单里没有「已鉴定」的标本，鉴定出具结论后才会出现在这里。</p>
+      <p v-if="returnMessage" class="return-message" :class="{ 'error-text': returnFailed }">
+        {{ returnMessage }}
+        <button v-if="returnRetryId !== null" class="link" type="button" @click="submitReturn(returnRetryId)">重试</button>
+      </p>
+    </section>
+
     <form class="filter-bar" @submit.prevent="reload">
       <label v-for="field in filterFields" :key="field" class="filter-item">
         <span>{{ field }}</span>
@@ -46,6 +80,7 @@
           <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
           <td>{{ row.status }}</td>
           <td class="row-actions">
+            <RouterLink class="link" :to="`/bone/${row.id}`">详情</RouterLink>
             <button
               v-for="action in actions"
               :key="action"
@@ -76,6 +111,7 @@ import { computed, onMounted, ref } from 'vue'
 import {
   downloadEntries,
   listEntries,
+  listReturnableBones,
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
@@ -91,6 +127,10 @@ const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
+const returnable = ref<EntryRow[]>([])
+const returnMessage = ref('')
+const returnFailed = ref(false)
+const returnRetryId = ref<number | null>(null)
 const filterFields = columns.slice(0, 3)
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
@@ -122,12 +162,28 @@ function runAction(action: string, row: EntryRow) {
   reload()
 }
 
+function submitReturn(id: number) {
+  returnMessage.value = ''
+  returnFailed.value = false
+  returnRetryId.value = null
+  const result = applyAction(meta.key, id, '办理退样')
+  returnMessage.value = result.message
+  if (!result.ok) {
+    returnFailed.value = true
+    // 写入失败可以原样重试；重试走同一条幂等流程，不会顶掉已有登记
+    returnRetryId.value = result.retryable ? id : null
+    return
+  }
+  reload()
+}
+
 function reload() {
   errorMessage.value = ''
   try {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    returnable.value = listReturnableBones()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '骨骼标本列表读取失败'
   }

@@ -30,6 +30,8 @@ export type PageResult = {
 export type ActionResult = {
   ok: boolean
   message: string
+  /** 为 true 表示这次是写入失败，可以原样重试；业务规则拦截时不带这个标记。 */
+  retryable?: boolean
 }
 
 export type OverviewResult = {

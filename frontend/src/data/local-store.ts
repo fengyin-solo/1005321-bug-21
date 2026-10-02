@@ -22,7 +22,12 @@ function readStorage(): Record<string, EntryRow[]> {
     const parsed = JSON.parse(raw) as Record<string, EntryRow[]>
     return { ...fallback, ...parsed }
   } catch {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(fallback))
+    // 解析失败不顶掉已有数据：原串备份到另一个键，内存里先退回示例数据，留待下次打开再恢复。
+    try {
+      window.localStorage.setItem(`${STORAGE_KEY}:backup`, raw)
+    } catch {
+      // 备份也写不进去就算了，至少别再覆盖原数据
+    }
     return fallback
   }
 }
@@ -42,10 +47,11 @@ export function listRows(key: string): EntryRow[] {
 
 export function saveRows(key: string, rows: EntryRow[]): void {
   const next = { ...allRows(), [key]: rows }
-  cache = next
+  // 先落盘再换缓存：写不进去时缓存保持原样，调用方拿到异常后可以原样重试，不会顶掉已有数据。
   if (typeof window !== 'undefined' && window.localStorage) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
   }
+  cache = next
 }
 
 export function resetRows(key: string): EntryRow[] {
